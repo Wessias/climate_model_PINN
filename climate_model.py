@@ -186,7 +186,7 @@ for epoch in range(n_epochs):
 
 # %%
 # Save the model
-torch.save(model.state_dict(), "pinn_model_0000.pt")
+torch.save(model.state_dict(), "pinn_model_continuel8r.pt")
 
 # %%
 
@@ -336,6 +336,14 @@ for epoch in range(n_epochs):
 
     if epoch % 100 == 0:
         print(f"Epoch {epoch:>4}: Total = {loss.item():.5f} | Data = {data_l.item():.5f} | PDE = {pde_l.item():.5f} | α = {alpha_val.item():.5e} | λ = {lambda_val:.5e}")
+
+# %% Save optimizer state
+torch.save({
+    "epoch": epoch,
+    "model_state_dict": model.state_dict(),
+    "optimizer_state_dict": optimizer.state_dict(),
+    "loss_fn_state_dict": loss_fn.state_dict(),  # optional, if using learnable α and λ
+}, "checkpoint.pt")
 
 
 
