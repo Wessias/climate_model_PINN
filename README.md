@@ -25,6 +25,9 @@ This project explores the use of **Physics-Informed Neural Networks (PINNs)** to
 - Variable: 2-meter air temperature
 - Temporal resolution: 6-hourly
 - Spatial coverage: Europe (35°N–60°N, -10°E–30°E)
+- Accessed using the [Copernicus Climate Data Store (CDS) API](https://cds.climate.copernicus.eu/api-how-to)
+- Automated download via Python script (`cdsapi`) for reproducibility
+
 
 ---
 
