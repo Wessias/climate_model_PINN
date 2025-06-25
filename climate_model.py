@@ -105,7 +105,7 @@ plt.show()
 
 # The we want to model the 2D heat equation:
 # ∂T/∂t = α * (∂²T/∂x² + ∂²T/∂y²)
-# where α is the thermal diffusivity constant.
+# where α is the thermal diffusivity constant (non-learnable here)
 
 import torch
 import torch.nn as nn
@@ -170,6 +170,7 @@ model = FCNN()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 alpha = 1e-2  # thermal diffusivity
 
+# %% 
 n_epochs = 1000
 for epoch in range(n_epochs):
     optimizer.zero_grad()
@@ -317,6 +318,7 @@ optimizer = torch.optim.Adam(
     list(model.parameters()) + list(loss_fn.parameters()),
     lr=1e-3
 )
+
 
 n_phys = 10000  # number of physics points per epoch
 
