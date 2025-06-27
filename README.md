@@ -46,12 +46,6 @@ This project explores the use of **Physics-Informed Neural Networks (PINNs)** to
 - Final predictions showed **some realistic patterns**, but lacked full smoothness and accuracy
 - The model struggled with sharp gradients and temporal generalization
 
-![PINN Prediction](output_pred.png)
-*PINN-predicted temperature field (Day 3)*
-
-![Residuals](output_residual.png)
-*PDE residual magnitude — large values indicate weak constraint satisfaction*
-
 ---
 
 ## 💡 Reflections
