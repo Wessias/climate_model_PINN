@@ -7,9 +7,8 @@ This project explores the use of **Physics-Informed Neural Networks (PINNs)** to
 ## 📌 Summary
 
 - Uses the **2D heat equation** as a physical constraint:
-  \[
-  \frac{\partial T}{\partial t} = \alpha \left( \frac{\partial^2 T}{\partial x^2} + \frac{\partial^2 T}{\partial y^2} \right)
-  \]
+  $$\frac{\partial T}{\partial t} = \alpha \left( \frac{\partial^2 T}{\partial x^2} + \frac{\partial^2 T}{\partial y^2} \right)$$
+  
 - Trained on real-world ERA5 temperature data (2m temperature, 6-hourly over 5 days)
 - Combines data fitting loss with PDE residual loss using **autograd in PyTorch**
 - Implements learnable physical parameters:
