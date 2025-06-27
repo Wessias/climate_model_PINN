@@ -1,4 +1,5 @@
-
+# This script demonstrates how to download ERA5 temperature data, preprocess it, and train a Physics-Informed Neural Network (PINN) to model the 2D heat equation in Europe.
+# Structured as a Jupyter notebook with code cells.
 
 # %% Download 5 days of 6-hourly temperature data from ERA5 (Europe)
 import cdsapi
@@ -81,29 +82,10 @@ inputs = np.stack([
 outputs = T.reshape(-1, 1)
 
 
+# %% Definitions of helper functions and classes for PINN
+# We will use a simple feedforward neural network to approximate the temperature field.
 
-
-
-# %%
-
-T = temp.values  # shape: (time, lat, lon)
-lats = temp.latitude.values
-lons = temp.longitude.values
-
-T0 = T[0, :, :]  # shape (lat, lon)
-
-plt.contourf(lons, lats, T0, levels=50, cmap='coolwarm')
-plt.colorbar(label="Temperature (°C)")
-plt.title("Manual Plot – Same as xarray")
-plt.xlabel("Longitude")
-plt.ylabel("Latitude")
-plt.show()
-
-
-
-# %%
-
-# The we want to model the 2D heat equation:
+# We want to model the 2D heat equation:
 # ∂T/∂t = α * (∂²T/∂x² + ∂²T/∂y²)
 # where α is the thermal diffusivity constant (non-learnable here)
 
@@ -123,98 +105,6 @@ class FCNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
-
-def pinn_loss(model, xyt, T_true, alpha):
-    xyt.requires_grad_(True)
-
-    T_pred = model(xyt)
-
-    # Compute gradients
-    grads = torch.autograd.grad(
-        T_pred, xyt, 
-        grad_outputs=torch.ones_like(T_pred),
-        create_graph=True
-    )[0]
-
-    dT_dt = grads[:, 2:3]
-    dT_dx = torch.autograd.grad(grads[:, 0:1], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 0:1]
-    dT_dy = torch.autograd.grad(grads[:, 1:2], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 1:2]
-
-    # Laplacian: second-order spatial derivatives
-    d2T_dx2 = torch.autograd.grad(dT_dx, xyt, grad_outputs=torch.ones_like(dT_dx), create_graph=True)[0][:, 0:1]
-    d2T_dy2 = torch.autograd.grad(dT_dy, xyt, grad_outputs=torch.ones_like(dT_dy), create_graph=True)[0][:, 1:2]
-
-    # Heat equation residual
-    residual = dT_dt - alpha * (d2T_dx2 + d2T_dy2)
-
-    # Loss: data fit + physics residual
-    data_loss = torch.mean((T_pred - T_true) ** 2)
-    pde_loss = torch.mean(residual ** 2)
-
-    return data_loss + pde_loss, data_loss.item(), pde_loss.item()
-    
-
-# %%
-# Convert to torch tensors
-X = torch.tensor(inputs, dtype=torch.float32)
-Y = torch.tensor(outputs, dtype=torch.float32)
-
-# Optional: subsample if needed (for speed)
-idx = torch.randperm(X.shape[0])[:50000]
-X_sub = X[idx]
-Y_sub = Y[idx]
-
-
-model = FCNN()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-alpha = 1e-2  # thermal diffusivity
-
-# %% 
-n_epochs = 1000
-for epoch in range(n_epochs):
-    optimizer.zero_grad()
-    loss, data_l, pde_l = pinn_loss(model, X_sub, Y_sub, alpha)
-    loss.backward()
-    optimizer.step()
-
-    if epoch % 100 == 0:
-        print(f"Epoch {epoch}: Total Loss = {loss.item():.5f} | Data = {data_l:.5f} | PDE = {pde_l:.5f}")
-    if True:
-        print("PDE Loss:", pde_l)
-
-
-# %%
-# Save the model
-torch.save(model.state_dict(), "pinn_model_continuel8r.pt")
-
-# %%
-
-
-def simple_data_loss(model, xyt, T_true):
-    T_pred = model(xyt)
-    return torch.mean((T_pred - T_true) ** 2)
-
-model = FCNN(hidden_dim=128, depth=5)  # More capacity is better here
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-losses = []
-for epoch in range(5000):
-    optimizer.zero_grad()
-    loss = simple_data_loss(model, X_sub, Y_sub)
-    loss.backward()
-    optimizer.step()
-    losses.append(loss.item())
-
-    if epoch % 100 == 0:
-        print(f"Epoch {epoch}: Data Loss = {loss.item():.5f}")
-
-
-
-# %%
-
-import torch
-import torch.nn as nn
 
 class PINNLoss(nn.Module):
     def __init__(self, model, lambda_pde=0.01, log_alpha=True):
@@ -265,7 +155,7 @@ class PINNLoss(nn.Module):
 
         total_loss = data_loss + lambda_pde * pde_loss
 
-        return total_loss, data_loss, pde_loss, alpha
+        return total_loss, data_loss, pde_loss, alpha.item(), lambda_pde.item()
     
 
 def sample_X_phys(n_points, lon_bounds, lat_bounds, time_bounds):
@@ -280,6 +170,57 @@ def sample_X_phys(n_points, lon_bounds, lat_bounds, time_bounds):
     X_phys = np.stack([lon, lat, time], axis=1)
     return torch.tensor(X_phys, dtype=torch.float32)
 
+def compute_residuals(model, xyt, alpha):
+    xyt.requires_grad_(True)
+    T_pred = model(xyt)
+
+    grads = torch.autograd.grad(
+        T_pred, xyt, 
+        grad_outputs=torch.ones_like(T_pred),
+        create_graph=True
+    )[0]
+
+    dT_dt = grads[:, 2:3]
+    dT_dx = torch.autograd.grad(grads[:, 0:1], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 0:1]
+    dT_dy = torch.autograd.grad(grads[:, 1:2], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 1:2]
+
+    d2T_dx2 = torch.autograd.grad(dT_dx, xyt, grad_outputs=torch.ones_like(dT_dx), create_graph=True)[0][:, 0:1]
+    d2T_dy2 = torch.autograd.grad(dT_dy, xyt, grad_outputs=torch.ones_like(dT_dy), create_graph=True)[0][:, 1:2]
+
+    residual = dT_dt - alpha * (d2T_dx2 + d2T_dy2)
+    return residual.detach().cpu().numpy()
+
+
+
+def simple_data_loss(model, xyt, T_true):
+    T_pred = model(xyt)
+    return torch.mean((T_pred - T_true) ** 2)
+
+
+
+
+
+
+# %% Import necessary libraries
+import numpy as np
+import torch
+import torch.nn as nn
+
+
+# %%
+# Convert to torch tensors
+X = torch.tensor(inputs, dtype=torch.float32)
+Y = torch.tensor(outputs, dtype=torch.float32)
+
+X_sub = X
+Y_sub = Y
+# %%
+# Optional: subsample if needed (for speed)
+idx = torch.randperm(X.shape[0])[:200000]
+X_sub = X[idx]
+Y_sub = Y[idx]
+# %%
+# Prepare physical space for PINN
     
 
 
@@ -310,41 +251,57 @@ X_phys = np.stack([
 X_phys_tensor = torch.tensor(X_phys, dtype=torch.float32)
 
 
-    
-model = FCNN(hidden_dim=128, depth=5)
-loss_fn = PINNLoss(model, lambda_pde=5, log_alpha=True)
+# %%
 
+# === Training setup ===
+model = FCNN(hidden_dim=128, depth=5)
+loss_fn = PINNLoss(model)
 optimizer = torch.optim.Adam(
-    list(model.parameters()) + list(loss_fn.parameters()),
-    lr=1e-3
+    list(model.parameters()) + list(loss_fn.parameters()), lr=1e-3
 )
 
+# === Resume or Start Fresh ===
+start_epoch = 0
+resume = False
+checkpoint_path = "checkpoint.pt"
 
-n_phys = 10000  # number of physics points per epoch
+if resume:
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    loss_fn.load_state_dict(checkpoint["loss_fn_state_dict"])
+    start_epoch = checkpoint["epoch"] + 1
+    print(f"Resumed from epoch {start_epoch}")
 
-n_epochs = 10000
+# === Training loop ===
+n_epochs = 4000
+n_phys = 200000
 
-for epoch in range(n_epochs):
-    #  Resample physics points every epoch
+for epoch in range(start_epoch, start_epoch + n_epochs):
     X_phys_tensor = sample_X_phys(n_phys, lon_bounds, lat_bounds, time_bounds)
 
     optimizer.zero_grad()
-    loss, data_l, pde_l, alpha_val = loss_fn(X_sub, Y_sub, X_phys_tensor)
-    lambda_val = torch.exp(loss_fn.log_lambda).item()
+    loss, data_l, pde_l, alpha_val, lambda_val = loss_fn(X_sub, Y_sub, X_phys_tensor)
     loss.backward()
     optimizer.step()
 
     if epoch % 100 == 0:
-        print(f"Epoch {epoch:>4}: Total = {loss.item():.5f} | Data = {data_l.item():.5f} | PDE = {pde_l.item():.5f} | α = {alpha_val.item():.5e} | λ = {lambda_val:.5e}")
+        print(f"Epoch {epoch:>4} | Total: {loss.item():.5f} | Data: {data_l:.5f} | PDE: {pde_l:.5f} | α: {alpha_val:.2f} | λ: {lambda_val:.2f}")
 
-# %% Save optimizer state
-torch.save({
-    "epoch": epoch,
-    "model_state_dict": model.state_dict(),
-    "optimizer_state_dict": optimizer.state_dict(),
-    "loss_fn_state_dict": loss_fn.state_dict(),  # optional, if using learnable α and λ
-}, "checkpoint.pt")
+    if epoch % 1000 == 0:
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "loss_fn_state_dict": loss_fn.state_dict()
+        }, checkpoint_path)
+        print(f"Checkpoint saved at epoch {epoch}")
 
+
+
+
+# %% Save the model if you want to use it later
+torch.save(model.state_dict(), "pinn_model_continuel8r.pt")
 
 
 # %% Evaluation of PINN predictions
@@ -357,7 +314,7 @@ model.load_state_dict(torch.load("pinn_model.pt"))
 model.eval()
 
 
-# %% 
+# %% # Evaluate the model on a specific day
 
 # Choose day index (e.g., day 3)
 t_eval = 3  # in days (since we used time_days)
@@ -398,26 +355,8 @@ plt.tight_layout()
 plt.show()
 
 
-# %%
-def compute_residuals(model, xyt, alpha):
-    xyt.requires_grad_(True)
-    T_pred = model(xyt)
+# %% # Compute and visualize the PDE residuals
 
-    grads = torch.autograd.grad(
-        T_pred, xyt, 
-        grad_outputs=torch.ones_like(T_pred),
-        create_graph=True
-    )[0]
-
-    dT_dt = grads[:, 2:3]
-    dT_dx = torch.autograd.grad(grads[:, 0:1], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 0:1]
-    dT_dy = torch.autograd.grad(grads[:, 1:2], xyt, grad_outputs=torch.ones_like(dT_dt), create_graph=True)[0][:, 1:2]
-
-    d2T_dx2 = torch.autograd.grad(dT_dx, xyt, grad_outputs=torch.ones_like(dT_dx), create_graph=True)[0][:, 0:1]
-    d2T_dy2 = torch.autograd.grad(dT_dy, xyt, grad_outputs=torch.ones_like(dT_dy), create_graph=True)[0][:, 1:2]
-
-    residual = dT_dt - alpha * (d2T_dx2 + d2T_dy2)
-    return residual.detach().cpu().numpy()
 
 residuals = compute_residuals(model, X_eval_tensor, alpha=1e-2)
 residuals_grid = residuals.reshape((ny, nx))
